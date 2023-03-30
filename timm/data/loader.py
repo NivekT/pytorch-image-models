@@ -222,33 +222,33 @@ def create_loader(
         persistent_workers=True,
         worker_seeding='all',
 ):
-    re_num_splits = 0
-    if re_split:
-        # apply RE to second half of batch if no aug split otherwise line up with aug split
-        re_num_splits = num_aug_splits or 2
-    dataset.transform = create_transform(
-        input_size,
-        is_training=is_training,
-        use_prefetcher=use_prefetcher,
-        no_aug=no_aug,
-        scale=scale,
-        ratio=ratio,
-        hflip=hflip,
-        vflip=vflip,
-        color_jitter=color_jitter,
-        auto_augment=auto_augment,
-        interpolation=interpolation,
-        mean=mean,
-        std=std,
-        crop_pct=crop_pct,
-        crop_mode=crop_mode,
-        tf_preprocessing=tf_preprocessing,
-        re_prob=re_prob,
-        re_mode=re_mode,
-        re_count=re_count,
-        re_num_splits=re_num_splits,
-        separate=num_aug_splits > 0,
-    )
+    # re_num_splits = 0
+    # if re_split:
+    #     # apply RE to second half of batch if no aug split otherwise line up with aug split
+    #     re_num_splits = num_aug_splits or 2
+    # dataset.transform = create_transform(
+    #     input_size,
+    #     is_training=is_training,
+    #     use_prefetcher=use_prefetcher,
+    #     no_aug=no_aug,
+    #     scale=scale,
+    #     ratio=ratio,
+    #     hflip=hflip,
+    #     vflip=vflip,
+    #     color_jitter=color_jitter,
+    #     auto_augment=auto_augment,
+    #     interpolation=interpolation,
+    #     mean=mean,
+    #     std=std,
+    #     crop_pct=crop_pct,
+    #     crop_mode=crop_mode,
+    #     tf_preprocessing=tf_preprocessing,
+    #     re_prob=re_prob,
+    #     re_mode=re_mode,
+    #     re_count=re_count,
+    #     re_num_splits=re_num_splits,
+    #     separate=num_aug_splits > 0,
+    # )
 
     if isinstance(dataset, IterableImageDataset):
         # give Iterable datasets early knowledge of num_workers so that sample estimates
@@ -256,18 +256,20 @@ def create_loader(
         dataset.set_loader_cfg(num_workers=num_workers)
 
     sampler = None
-    if distributed and not isinstance(dataset, torch.utils.data.IterableDataset):
-        if is_training:
-            if num_aug_repeats:
-                sampler = RepeatAugSampler(dataset, num_repeats=num_aug_repeats)
-            else:
-                sampler = torch.utils.data.distributed.DistributedSampler(dataset)
-        else:
-            # This will add extra duplicate entries to result in equal num
-            # of samples per-process, will slightly alter validation results
-            sampler = OrderedDistributedSampler(dataset)
-    else:
-        assert num_aug_repeats == 0, "RepeatAugment not currently supported in non-distributed or IterableDataset use"
+
+    """IterDataPipe doesn't have this part"""
+    # if distributed and not isinstance(dataset, torch.utils.data.IterableDataset):
+    #     if is_training:
+    #         if num_aug_repeats:
+    #             sampler = RepeatAugSampler(dataset, num_repeats=num_aug_repeats)
+    #         else:
+    #             sampler = torch.utils.data.distributed.DistributedSampler(dataset)
+    #     else:
+    #         # This will add extra duplicate entries to result in equal num
+    #         # of samples per-process, will slightly alter validation results
+    #         sampler = OrderedDistributedSampler(dataset)
+    # else:
+    #     assert num_aug_repeats == 0, "RepeatAugment not currently supported in non-distributed or IterableDataset use"
 
     if collate_fn is None:
         collate_fn = fast_collate if use_prefetcher else torch.utils.data.dataloader.default_collate
@@ -292,21 +294,21 @@ def create_loader(
     except TypeError as e:
         loader_args.pop('persistent_workers')  # only in Pytorch 1.7+
         loader = loader_class(dataset, **loader_args)
-    if use_prefetcher:
-        prefetch_re_prob = re_prob if is_training and not no_aug else 0.
-        loader = PrefetchLoader(
-            loader,
-            mean=mean,
-            std=std,
-            channels=input_size[0],
-            device=device,
-            fp16=fp16,  # deprecated, use img_dtype
-            img_dtype=img_dtype,
-            re_prob=prefetch_re_prob,
-            re_mode=re_mode,
-            re_count=re_count,
-            re_num_splits=re_num_splits
-        )
+    # if use_prefetcher:
+    #     prefetch_re_prob = re_prob if is_training and not no_aug else 0.
+    #     loader = PrefetchLoader(
+    #         loader,
+    #         mean=mean,
+    #         std=std,
+    #         channels=input_size[0],
+    #         device=device,
+    #         fp16=fp16,  # deprecated, use img_dtype
+    #         img_dtype=img_dtype,
+    #         re_prob=prefetch_re_prob,
+    #         re_mode=re_mode,
+    #         re_count=re_count,
+    #         re_num_splits=re_num_splits
+    #     )
 
     return loader
 
