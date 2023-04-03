@@ -53,6 +53,8 @@ def create_files_datapipe(paths: List[str], file_system: str = "local"):
                         .sharding_filter() \
                         .load_files_by_s3()
     else:
+        # For Google Cloud or Azure, use `fsspec`:
+        # https://pytorch.org/data/main/dp_tutorial.html#working-with-cloud-storage-providers
         raise NotImplementedError(f"Not implemented for file_system {file_system} yet.")
 
     return datapipe
@@ -82,11 +84,14 @@ def create_datapipe(
             imagenet-val-00002.tar
             imagenet-val-00003.tar
     """
+    if root is None:
+        print("`root` is `None`, setting it to '.'")
+        root = "."
     if isinstance(root, str):
         root = [root]
 
     if file_system == "local":
-        root = [path + f"/{split}/"for path in root]
+        root = [path + f"/{split}/" for path in root]
 
     tar_archives_dp = create_files_datapipe(root, file_system)
 

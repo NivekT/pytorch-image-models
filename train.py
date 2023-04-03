@@ -30,7 +30,7 @@ import yaml
 from torch.nn.parallel import DistributedDataParallel as NativeDDP
 
 from timm import utils
-from timm.data import create_dataset, create_loader, resolve_data_config, Mixup, FastCollateMixup, AugMixDataset
+from timm.data import create_dataset, create_loader, resolve_data_config, Mixup, FastCollateMixup, AugMixDataset, create_datapipe, create_loader2, create_transform
 from timm.layers import convert_splitbn_model, convert_sync_batchnorm, set_fast_norm
 from timm.loss import JsdCrossEntropy, SoftTargetCrossEntropy, BinaryCrossEntropy, LabelSmoothingCrossEntropy
 from timm.models import create_model, safe_model_name, resume_checkpoint, load_checkpoint, model_parameters
@@ -565,27 +565,31 @@ def main():
     # create the train and eval datasets
     if args.data and not args.data_dir:
         args.data_dir = args.data
-    dataset_train = create_dataset(
-        args.dataset,
-        root=args.data_dir,
-        split=args.train_split,
-        is_training=True,
-        class_map=args.class_map,
-        download=args.dataset_download,
-        batch_size=args.batch_size,
-        seed=args.seed,
-        repeats=args.epoch_repeats,
-    )
 
-    dataset_eval = create_dataset(
-        args.dataset,
-        root=args.data_dir,
-        split=args.val_split,
-        is_training=False,
-        class_map=args.class_map,
-        download=args.dataset_download,
-        batch_size=args.batch_size,
-    )
+    datapipe_train = create_datapipe(name="ImageNet", root=args.data_dir, split="train", file_system="local", repeats=args.epoch_repeats)
+    datapipe_eval = create_datapipe(name="ImageNet", root=args.data_dir, split="valid", file_system="local", repeats=args.epoch_repeats)
+
+    # dataset_train = create_dataset(
+    #     args.dataset,
+    #     root=args.data_dir,
+    #     split=args.train_split,
+    #     is_training=True,
+    #     class_map=args.class_map,
+    #     download=args.dataset_download,
+    #     batch_size=args.batch_size,
+    #     seed=args.seed,
+    #     repeats=args.epoch_repeats,
+    # )
+    #
+    # dataset_eval = create_dataset(
+    #     args.dataset,
+    #     root=args.data_dir,
+    #     split=args.val_split,
+    #     is_training=False,
+    #     class_map=args.class_map,
+    #     download=args.dataset_download,
+    #     batch_size=args.batch_size,
+    # )
 
     # setup mixup / cutmix
     collate_fn = None
@@ -609,17 +613,46 @@ def main():
             mixup_fn = Mixup(**mixup_args)
 
     # wrap dataset in AugMix helper
-    if num_aug_splits > 1:
-        dataset_train = AugMixDataset(dataset_train, num_splits=num_aug_splits)
+    # if num_aug_splits > 1:
+    #     dataset_train = AugMixDataset(dataset_train, num_splits=num_aug_splits)
 
     # create data loaders w/ augmentation pipeiine
     train_interpolation = args.train_interpolation
     if args.no_aug or not train_interpolation:
         train_interpolation = data_config['interpolation']
-    loader_train = create_loader(
-        dataset_train,
+    # loader_train = create_loader(
+    #     dataset_train,
+    #     input_size=data_config['input_size'],
+    #     batch_size=args.batch_size,
+    #     is_training=True,
+    #     use_prefetcher=args.prefetcher,
+    #     no_aug=args.no_aug,
+    #     re_prob=args.reprob,
+    #     re_mode=args.remode,
+    #     re_count=args.recount,
+    #     re_split=args.resplit,
+    #     scale=args.scale,
+    #     ratio=args.ratio,
+    #     hflip=args.hflip,
+    #     vflip=args.vflip,
+    #     color_jitter=args.color_jitter,
+    #     auto_augment=args.aa,
+    #     num_aug_repeats=args.aug_repeats,
+    #     num_aug_splits=num_aug_splits,
+    #     interpolation=train_interpolation,
+    #     mean=data_config['mean'],
+    #     std=data_config['std'],
+    #     num_workers=args.workers,
+    #     distributed=args.distributed,
+    #     collate_fn=collate_fn,
+    #     pin_memory=args.pin_mem,
+    #     device=device,
+    #     use_multi_epochs_loader=args.use_multi_epochs_loader,
+    #     worker_seeding=args.worker_seeding,
+    # )
+
+    train_img_transform = create_transform(
         input_size=data_config['input_size'],
-        batch_size=args.batch_size,
         is_training=True,
         use_prefetcher=args.prefetcher,
         no_aug=args.no_aug,
@@ -633,39 +666,65 @@ def main():
         vflip=args.vflip,
         color_jitter=args.color_jitter,
         auto_augment=args.aa,
-        num_aug_repeats=args.aug_repeats,
-        num_aug_splits=num_aug_splits,
         interpolation=train_interpolation,
         mean=data_config['mean'],
         std=data_config['std'],
-        num_workers=args.workers,
-        distributed=args.distributed,
-        collate_fn=collate_fn,
-        pin_memory=args.pin_mem,
-        device=device,
-        use_multi_epochs_loader=args.use_multi_epochs_loader,
-        worker_seeding=args.worker_seeding,
+        separate=num_aug_splits > 0,
     )
+
+    """Note that not all options from `create_loader` are implemented here."""
+    loader_train = create_loader2(datapipe_train,
+                                  batch_size=args.batch_size,
+                                  dataset_len=1000,  # We can also store this in DataPipe if desired
+                                  is_training=True,
+                                  img_transform=train_img_transform,
+                                  collate_fn=collate_fn,
+                                  pin_memory=args.pin_mem,
+                                  num_workers=args.workers,
+                                  use_prefetcher=args.prefetcher,
+                                  distributed=args.distributed)
 
     eval_workers = args.workers
     if args.distributed and ('tfds' in args.dataset or 'wds' in args.dataset):
         # FIXME reduces validation padding issues when using TFDS, WDS w/ workers and distributed training
         eval_workers = min(2, args.workers)
-    loader_eval = create_loader(
-        dataset_eval,
+    # loader_eval = create_loader(
+    #     dataset_eval,
+    #     input_size=data_config['input_size'],
+    #     batch_size=args.validation_batch_size or args.batch_size,
+    #     is_training=False,
+    #     use_prefetcher=args.prefetcher,
+    #     interpolation=data_config['interpolation'],
+    #     mean=data_config['mean'],
+    #     std=data_config['std'],
+    #     num_workers=eval_workers,
+    #     distributed=args.distributed,
+    #     crop_pct=data_config['crop_pct'],
+    #     pin_memory=args.pin_mem,
+    #     device=device,
+    # )
+
+    eval_img_transform = create_transform(
         input_size=data_config['input_size'],
-        batch_size=args.validation_batch_size or args.batch_size,
         is_training=False,
         use_prefetcher=args.prefetcher,
         interpolation=data_config['interpolation'],
         mean=data_config['mean'],
         std=data_config['std'],
-        num_workers=eval_workers,
-        distributed=args.distributed,
         crop_pct=data_config['crop_pct'],
-        pin_memory=args.pin_mem,
-        device=device,
     )
+
+    """Note that not all options from `create_loader` are implemented here."""
+    loader_eval = create_loader2(datapipe_eval,
+                                 batch_size=args.validation_batch_size or args.batch_size,
+                                 dataset_len=1000,  # We can also store this in DataPipe if desired
+                                 is_training=False,
+                                 img_transform=eval_img_transform,
+                                 collate_fn=collate_fn,
+                                 pin_memory=args.pin_mem,
+                                 num_workers=eval_workers,
+                                 use_prefetcher=args.prefetcher,
+                                 distributed=args.distributed)
 
     # setup loss function
     if args.jsd_loss:
@@ -727,7 +786,7 @@ def main():
                 "Metrics not being logged to wandb, try `pip install wandb`")
 
     # setup learning rate schedule and starting epoch
-    updates_per_epoch = len(loader_train)
+    updates_per_epoch = len(loader_train.datapipe)
     lr_scheduler, num_epochs = create_scheduler_v2(
         optimizer,
         **scheduler_kwargs(args),
@@ -751,10 +810,11 @@ def main():
 
     try:
         for epoch in range(start_epoch, num_epochs):
-            if hasattr(dataset_train, 'set_epoch'):
-                dataset_train.set_epoch(epoch)
-            elif args.distributed and hasattr(loader_train.sampler, 'set_epoch'):
-                loader_train.sampler.set_epoch(epoch)
+            """`set_epoch` should no longer be needed. """
+            # if hasattr(dataset_train, 'set_epoch'):
+            #     dataset_train.set_epoch(epoch)
+            # elif args.distributed and hasattr(loader_train.sampler, 'set_epoch'):
+            #     loader_train.sampler.set_epoch(epoch)
 
             train_metrics = train_one_epoch(
                 epoch,
@@ -857,7 +917,7 @@ def train_one_epoch(
     model.train()
 
     end = time.time()
-    num_batches_per_epoch = len(loader)
+    num_batches_per_epoch = len(loader.datapipe)
     last_idx = num_batches_per_epoch - 1
     num_updates = epoch * num_batches_per_epoch
     for batch_idx, (input, target) in enumerate(loader):
@@ -920,7 +980,7 @@ def train_one_epoch(
                     'LR: {lr:.3e}  '
                     'Data: {data_time.val:.3f} ({data_time.avg:.3f})'.format(
                         epoch,
-                        batch_idx, len(loader),
+                        batch_idx, len(loader.datapipe),
                         100. * batch_idx / last_idx,
                         loss=losses_m,
                         batch_time=batch_time_m,
@@ -971,7 +1031,7 @@ def validate(
     model.eval()
 
     end = time.time()
-    last_idx = len(loader) - 1
+    last_idx = len(loader.datapipe) - 1
     with torch.no_grad():
         for batch_idx, (input, target) in enumerate(loader):
             last_batch = batch_idx == last_idx
