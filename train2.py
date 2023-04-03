@@ -566,9 +566,6 @@ def main():
     if args.data and not args.data_dir:
         args.data_dir = args.data
 
-    datapipe_train = create_datapipe(name="ImageNet", root=args.data_dir, split="train", file_system="local", repeats=args.epoch_repeats)
-    datapipe_eval = create_datapipe(name="ImageNet", root=args.data_dir, split="valid", file_system="local", repeats=args.epoch_repeats)
-
     # dataset_train = create_dataset(
     #     args.dataset,
     #     root=args.data_dir,
@@ -590,6 +587,11 @@ def main():
     #     download=args.dataset_download,
     #     batch_size=args.batch_size,
     # )
+
+    datapipe_train = create_datapipe(name="ImageNet", root=args.data_dir, split="train",
+                                     file_system="local", repeats=args.epoch_repeats)
+    datapipe_eval = create_datapipe(name="ImageNet", root=args.data_dir, split="valid",
+                                    file_system="local", repeats=args.epoch_repeats)
 
     # setup mixup / cutmix
     collate_fn = None
