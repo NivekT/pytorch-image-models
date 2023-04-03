@@ -40,11 +40,14 @@ def create_loader2(
     # Note: Depending on what the transform/collation is, it may need to invoke `img.float()` for certain models here
     if pin_memory:
         datapipe = datapipe.pin_memory()
-    length = dataset_len // batch_size if is_training else (dataset_len // batch_size) + 1
+
+    # Shuffle batches
+    datapipe = datapipe.shuffle()
 
     # Note: `DataLoader2` doesn't implement `__len__` method at the moment.
     # Manually setting DataPipe length is recommended because many DataPipe operations do not know
     # the resulting length in advance.
+    length = dataset_len // batch_size if is_training else (dataset_len // batch_size) + 1
     datapipe = datapipe.set_length(length)
 
     prefetch_cnt = {} if use_prefetcher else {"worker_prefetch_cnt": 0, "main_prefetch_cnt": 0}

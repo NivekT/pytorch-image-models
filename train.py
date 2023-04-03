@@ -565,7 +565,6 @@ def main():
     # create the train and eval datasets
     if args.data and not args.data_dir:
         args.data_dir = args.data
-
     # dataset_train = create_dataset(
     #     args.dataset,
     #     root=args.data_dir,
@@ -812,7 +811,7 @@ def main():
 
     try:
         for epoch in range(start_epoch, num_epochs):
-            """`set_epoch` should no longer be needed. """
+            """`set_epoch` should no longer be needed, as the `DataLoader2` will re-seed every epoch."""
             # if hasattr(dataset_train, 'set_epoch'):
             #     dataset_train.set_epoch(epoch)
             # elif args.distributed and hasattr(loader_train.sampler, 'set_epoch'):

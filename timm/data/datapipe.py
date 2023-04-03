@@ -40,6 +40,8 @@ def create_files_datapipe(paths: List[str], file_system: str = "local"):
 
     `.sharding_filter()` will shard the workload across nodes and workers within each node.
     In this case, each worker will read a different set of tar archives.
+    It is also worth noting that random seed is shared among processes prior to `sharding_filter`, to
+    ensure that all samples will be used, and the worker seeds differ after sharding.
     """
     paths_dp = IterableWrapper(paths)
     if file_system == "local":
